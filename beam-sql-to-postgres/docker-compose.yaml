@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 1. Banco de dados de ORIGEM
+  source-db:
+    image: postgres:15-alpine
+    container_name: source-db
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d  # Executa o script de inicialização
+    ports:
+      - "5432:5432"  # Expõe a porta para você poder conectar do seu computador
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d source_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Simulador do AlloyDB (DESTINO)
+  alloydb-simulator:
+    image: postgres:15-alpine
+    container_name: alloydb-simulator
+    environment:
+      POSTGRES_DB: alloydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"  # Expõe na porta 5433 para não conflitar com a origem
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d alloydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Aplicação Apache Beam
+  beam-app:
+    build: ./app
+    container_name: beam-app
+    depends_on:
+      source-db:
+        condition: service_healthy
+      alloydb-simulator:
+        condition: service_healthy
+    env_file:
+      - ./app/.env
+
+networks:
+  default:
+    driver: bridge
